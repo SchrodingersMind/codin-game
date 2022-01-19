@@ -5,138 +5,288 @@
 
 using namespace std;
 
-enum Directions {
+enum Moves {
     kNone,
-    kRight,
-    kDown,
-    kLeft,
-    kUp
+    kSpeed,
+    kSlow,
+    kJump,
+    kUp,
+    kDown
 };
 
 
-//////// Ball class
-
-class Ball {
+class Position {
 public:
-    int x, y;
-    int shot_count;
-    int last_shot_count;
-    vector<Directions> directions;
-
-    Ball(int x, int y, int shot_count): x(x), y(y), shot_count(shot_count), last_shot_count(shot_count) {};
-
-    void undo();
-    bool is_movable() const;
-    void move(Directions dir);
+    int lin, col;
 };
 
-void Ball::undo() {
-    if (shot_count == last_shot_count) {
-        cout << "There is going something fishy -_-" << endl;
+//class Bike {
+//public:
+//    Position pos;
+//    bool is_destroyed = false;
+//    Bike(int line, int col): pos(Position {line, col}) {};
+//
+//    bool isTop () const;
+//    bool isDown () const;
+//};
+//
+//bool Bike::isDown() const {
+//    return pos.lin == 3;
+//}
+//bool Bike::isTop() const {
+//    return pos.col == 0;
+//}
+
+
+class LineOfBikes {
+public:
+    vector<int> cur_pos;
+    int count=0;
+    int pos_x=0;
+    int speed=1;
+
+    LineOfBikes(int count): count(count) {};
+    LineOfBikes() {};
+    void addBike(int pos);
+    void deleteBikes(vector<int> bikes);
+    bool isMoveDown();
+    bool isMoveTop();
+    void move(Moves move);
+};
+
+void LineOfBikes::addBike(int pos) {
+    cur_pos.push_back(pos);
+//    count++;
+    sort(cur_pos.begin(), cur_pos.end());
+}
+void LineOfBikes::deleteBikes(vector<int> bikes) {
+    for (int bike : bikes) {
+        count--;
+        auto elem = find(cur_pos.begin(), cur_pos.end(), bike);
+        if (elem != cur_pos.end())
+            cur_pos.erase(elem);
     }
-    last_shot_count++;
-    directions.pop_back();
-}
-void Ball::move(Directions dir) {
-    last_shot_count--;
-    directions.push_back(dir);
-}
-bool Ball::is_movable() const {
-    return last_shot_count != 0;
 }
 
-bool compareBalls (Ball ball1, Ball ball2) {
-    return ball1.shot_count < ball2.shot_count;
+bool LineOfBikes::isMoveDown() {
+    if (cur_pos.back() == 3) {
+        return false;
+    }
+    return true;
 }
-//////// End of the Ball class
+bool LineOfBikes::isMoveTop() {
+    if (cur_pos[0] == 0) {
+        return false;
+    }
+    return true;
+}
+
+void LineOfBikes::move(Moves move) {
+    switch (move) {
+        case (Moves::kSpeed):
+            speed++;
+            break;
+        case (Moves::kSlow):
+            speed--;
+            break;
+        case (Moves::kUp):
+            for (int& bike : cur_pos) {
+                bike--;
+            }
+            break;
+        case (Moves::kDown):
+            for (int& bike : cur_pos) {
+                bike++;
+            }
+            break;
+    }
+    pos_x += speed;
+}
 
 
 
-//////// Map class
 enum MapElems {
-    kLand,
-    kBall,
-    kPool,
-    kHole
-};
-enum OutMapElems {
-    kDot,
-    kArrow_right,
-    kArrow_down,
-    kArrow_left,
-    kArrow_up,
-    kHole_empty,
-    kHole_filled
+    kHole,
+    kRoad
 };
 
-class Map {
+class Game {
 private:
-    void makeMove();
-    void sortBalls();
+    vector<vector<MapElems>> map;
+    LineOfBikes cur_line;
+    LineOfBikes start_line;
+    vector<Moves> moves;
+    bool is_init = true;
+    int map_length;
+    int motorbikes, to_survive;
+
+    bool isHoleInRange(int start_x, int end_x, int pos_y);
 public:
-    int width;
-    int height;
-    vector<vector<int>> actual_map;
-    vector<vector<int>> result_map;
-    vector<Ball> balls;
+    void inputMap();
+    void inputTurn();
+    void simulateOneChoice(Moves move, LineOfBikes& bikes);
+    Moves simulateOneTurn(vector<LineOfBikes> &prev_statuses, vector<Moves> &prev_moves);
+    vector<Moves> getBestMoves(LineOfBikes bikes) const;
+    string printNextMove();
 
-    Map(int width, int height): width(width), height(height) {};
-
-    void input();
-    void playGame();
 };
 
-void Map::makeMove() {
-
+bool Game::isHoleInRange(int start_x, int end_x, int pos_y) {
+    int left_border = min(map_length, end_x+1);
+    for (;start_x<left_border; start_x++) {
+        if (map[pos_y][start_x] == MapElems::kHole)
+            return true;
+    }
+    return false;
 }
 
-void Map::sortBalls() {
-
+void Game::inputMap() {
+    cin >> motorbikes; cin.ignore();
+    cin >> to_survive; cin.ignore();
+    start_line = LineOfBikes(motorbikes);
+    for (int line=0; line<4; line++) {
+        string l0;
+        cin >> l0; cin.ignore();
+        map_length = l0.length();
+        cerr << "Found map length " << map_length << endl;
+        map.emplace_back(0);
+        for (char c : l0) {
+            if (c == '.')
+                map[line].push_back(MapElems::kRoad);
+            else
+                map[line].push_back(MapElems::kHole);
+        }
+    }
 }
 
-void Map::input() {
-    for (int l = 0; l < height; l++) {
-        string row;
-        cin >> row; cin.ignore();
-        actual_map.emplace_back(0);
-        result_map.emplace_back(0);
-        for (int k=0; k < row.size(); k++) {
-            char c = row[k];
-            switch (c) {
-                case 'X':
-                    actual_map[l].push_back(MapElems::kPool);
-                    result_map[l].push_back(OutMapElems::kDot);
-                    break;
-                case '.':
-                    actual_map[l].push_back(MapElems::kLand);
-                    result_map[l].push_back(OutMapElems::kDot);
-                    break;
-                case 'H':
-                    actual_map[l].push_back(MapElems::kHole);
-                    result_map[l].push_back(OutMapElems::kHole_empty);
-                default:
-                    // Probably it's number from 1 to 9, that assume bat shot_count
-                    Ball ball = Ball(l, k, c-'0');
-                    balls.push_back(ball);
-                    actual_map[l].push_back(MapElems::kBall);
-                    result_map[l].push_back(OutMapElems::kDot);
-                    break;
+void Game::simulateOneChoice(Moves move, LineOfBikes& bikes) {
+    vector<int> to_delete;
+    switch (move) {
+        case (Moves::kSpeed):
+            for (int pos_y : bikes.cur_pos) {
+                if (isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed+1, pos_y))
+                    to_delete.push_back(pos_y);
+            }
+            break;
+        case (Moves::kSlow):
+            for (int pos_y : bikes.cur_pos) {
+                if (isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed-1, pos_y))
+                    to_delete.push_back(pos_y);
+            }
+            break;
+        case (Moves::kJump):
+            for (int pos_y : bikes.cur_pos) {
+                int x_cell = min(map_length-1, bikes.pos_x+bikes.speed);
+                if (map[pos_y][x_cell] == MapElems::kHole)
+                    to_delete.push_back(pos_y);
+            }
+            break;
+        case (Moves::kDown):
+            for (int pos_y : bikes.cur_pos) {
+                if (isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed-1, pos_y) || isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed, pos_y+1))
+                    to_delete.push_back(pos_y);
+            }
+            break;
+        case (Moves::kUp):
+            for (int pos_y : bikes.cur_pos) {
+                if (isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed-1, pos_y) || isHoleInRange(bikes.pos_x+1, bikes.pos_x+bikes.speed, pos_y-1))
+                    to_delete.push_back(pos_y);
+            }
+            break;
+    }
+    bikes.deleteBikes(to_delete);
+    bikes.move(move);
+}
 
+void Game::inputTurn() {
+    int s; // the motorbikes' speed
+    cin >> s; cin.ignore();
+    if (is_init) {
+        start_line.speed = s;
+    }
+    for (int i = 0; i < motorbikes; i++) {
+        int x; // x coordinate of the motorbike
+        int y; // y coordinate of the motorbike
+        int a; // indicates whether the motorbike is activated "1" or destroyed "0"
+        cin >> x >> y >> a; cin.ignore();
+        if (is_init) {
+            start_line.addBike(y);
+        }
+    }
+    if (is_init) {
+        vector<LineOfBikes> bikes {start_line};
+        simulateOneTurn(bikes, moves);
+    }
+    is_init = false;
+}
+
+vector<Moves> Game::getBestMoves(LineOfBikes bikes) const {
+    vector<Moves> result {Moves::kSpeed};
+    if (bikes.isMoveTop())
+        result.push_back(Moves::kUp);
+    if (bikes.isMoveDown())
+        result.push_back(Moves::kDown);
+    if (bikes.speed == 1) {
+        return result;
+    }
+    result.push_back(Moves::kJump);
+    result.push_back(kSlow);
+    return result;
+}
+
+Moves Game::simulateOneTurn(vector<LineOfBikes> &prev_statuses, vector<Moves> &prev_moves) {
+    LineOfBikes game_status = prev_statuses.back();
+    vector<Moves> in_progress = getBestMoves(game_status);
+    for (Moves move: in_progress) {
+        LineOfBikes tmp_status = game_status;
+        simulateOneChoice(move, tmp_status);
+        if (tmp_status.count >= to_survive) {
+            cerr << "Level: " << prev_moves.size() << " Found temp solution " << move << endl;
+            cerr << tmp_status.cur_pos[0] << " " << tmp_status.pos_x << " " << tmp_status.speed << endl;
+            prev_statuses.push_back(tmp_status);
+            prev_moves.push_back(move);
+            if (tmp_status.pos_x > map_length) {
+                cerr << "Found final result " << move << endl;
+                return move;
+            }
+            Moves res_move = simulateOneTurn(prev_statuses, prev_moves);
+            if (res_move == kNone) {
+                prev_statuses.pop_back();
+                prev_moves.pop_back();
+            } else {
+                return res_move;
             }
         }
     }
-    // Now balls with lower shot count should go first
-    sort(balls.begin(), balls.end(), compareBalls);
+    return kNone;
 }
-//////// End of the Map class
+
+string Game::printNextMove() {
+    Moves next_move = moves[0];
+    moves.erase(moves.begin());
+    switch (next_move) {
+        case (Moves::kDown):
+            return "DOWN";
+        case (Moves::kUp):
+            return "UP";
+        case (Moves::kSpeed):
+            return "SPEED";
+        case (Moves::kSlow):
+            return "SLOW";
+        case (Moves::kJump):
+            return "JUMP";
+    }
+    return "WAIT";
+}
 
 int main()
 {
-    int width;
-    int height;
-    cin >> width >> height; cin.ignore();
-    for (int i = 0; i < height; i++) {
-        string row;
-        cin >> row; cin.ignore();
+    Game game;
+    game.inputMap();
+    // game loop
+    while (1) {
+        game.inputTurn();
+        // A single line containing one of 6 keywords: SPEED, SLOW, JUMP, WAIT, UP, DOWN.
+        cout << game.printNextMove() << endl;
     }
 }
