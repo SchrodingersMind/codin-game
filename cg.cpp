@@ -1,255 +1,586 @@
 #include <iostream>
 #include <string>
-#include <utility>
 #include <vector>
 #include <algorithm>
+#include <list>
+#include <cmath>
+
+#define PLAYER_ME 0
 
 using namespace std;
 
-enum PlayerID_e {
-    kNone = -1,
-    kMe = 0,
-    kOpponent = 1
+enum Units {
+    kReaper,
+    kDestroyer,
+    kDoof,
+    kTanker,
+    kWreck,
+    kTar,
+    kOil
 };
 
-class Vitamin{
+class Point {
 public:
-    Vitamin(int v_a, int v_b, int v_c, int v_d, int v_e);
+    int x, y;
 
-    int a, b, c, d, e;
-    Vitamin(Vitamin const &copied) {
-        a = copied.a;
-        b = copied.b;
-        c = copied.c;
-        d = copied.d;
-        e = copied.e;
+    double distance(Point p) const;
+    bool isSharpAngle(Point vector_2) const;
+    double len() const;
+    Point operator+(Point other) const;
+    Point operator-(Point other) const;
+    Point operator/ (double div) const;
+    bool operator== (Point other) const;
+    bool operator!= (Point other) const;
+    friend ostream& operator<<(ostream& stream, const Point& result);
+};
+
+double Point::distance(Point p) const {
+    return sqrt(pow(x-p.x, 2) + pow(y-p.y, 2));
+}
+
+bool Point::isSharpAngle(Point vector_2) const {
+    return (x*vector_2.x + y*vector_2.y > 0) || (x == 0 && y == 0) || (vector_2.x == 0 && vector_2.y == 0);
+}
+
+double Point::len() const {
+    return sqrt(x*x + y*y);
+}
+Point Point::operator+(Point other) const {
+    return Point{x+other.x, y+other.y};
+}
+
+Point Point::operator-(Point other) const {
+    return Point {x-other.x, y-other.y};
+}
+Point Point::operator/(double div) const {
+    return {(int)(x/div), (int)(y/div)};
+}
+
+bool Point::operator==(Point other) const {
+    return (x == other.x && y == other.y);
+}
+
+bool Point::operator!=(Point other) const {
+    return (x != other.x || y != other.y);
+}
+ostream& operator<<(ostream& stream, const Point& result) {
+    stream << "x: " << result.x << " y: " << result.y;
+    return stream;
+}
+
+enum SpecialMoves {
+    kWait=-1,
+    kSkill=-2
+};
+
+class MoveResult {
+public:
+    Point p={0, 0};
+    int power=-1;
+    Point true_target={0, 0};
+
+//    MoveResult(): p{0, 0}, power{-1} {}
+    friend ostream& operator<<(ostream& stream, const MoveResult& result);
+};
+
+ostream& operator<<(ostream& stream, const MoveResult& result) {
+    if (result.power == SpecialMoves::kWait) {
+        stream << "WAIT";
+    } else if(result.power == SpecialMoves::kSkill) {
+        stream << "SKILL " << result.p.x << " " << result.p.y;
+    } else {
+        stream << result.p.x << " " << result.p.y << " " << result.power;
     }
-    string getNeeded(const Vitamin& fulfill) const;
-    int summary() const;
-};
-
-string Vitamin::getNeeded(const Vitamin& fulfill) const {
-    if (a < fulfill.a)
-        return "A";
-    if (b < fulfill.b)
-        return "B";
-    if (c < fulfill.c)
-        return "C";
-    if (d < fulfill.d)
-        return "D";
-    if (e < fulfill.e)
-        return "E";
-    return "";
+    return stream;
 }
 
-int Vitamin::summary() const {
-    return a+b+c+d+e;
-}
-
-Vitamin::Vitamin(int v_a, int v_b, int v_c, int v_d, int v_e) {
-    a = v_a;
-    b = v_b;
-    c = v_c;
-    d = v_d;
-    e = v_e;
-}
-
-class Sample {
+/////////////////////////////
+////   UNIT BASE CLASS
+/////////////////////////////
+class Unit {
+protected:
+    int radius=0;
+    double mass=0, friction=0;
+    int player=-1;
 public:
-    int sample_id=-1;
-    PlayerID_e carried_by=kNone;
-//    int rank;
-//    string expertise_gain;
-    int health{};
-    Vitamin vitamin;
-//    int cost_a{};
-//    int cost_b{};
-//    int cost_c{};
-//    int cost_d{};
-//    int cost_e{};
+    int unit_type=0;
+    Point target_mb{0, 0}, estimated{0, 0};
+    Point p;
+    Point v;
 
-    double getCostBenefitRatio() const;
-    bool isValid() const;
+    Unit (int x, int y, int vx, int vy): p{x, y}, v{vx, vy} {}
+    Unit (int x, int y, int vx, int vy, int mass, int radius, int ut, int player): p{x, y}, v{vx, vy},
+        mass{(double)mass}, radius{radius}, unit_type{ut}, player{player} {}
+
+    void estimate(Point p1, int power);
+    void move();
+    bool isMine() const;
+
+    virtual int getRadius() { return 0; }
+    virtual double getMass() { return 0.0; }
+    virtual double getFriction() { return 0.0; }
+
+    Point calculateStopPosition(Point target, int power) const;
+    // Calculate power and point that needed to move by machine to reach current location
+    MoveResult* calculateThrust(Point start, Point previous, double machine_mass) const;
+    MoveResult* overseeMove();
 };
 
-double Sample::getCostBenefitRatio() const {
-    return (double)health / vitamin.summary();
+
+void Unit::estimate(Point p1, int power) {
+    double distance = p.distance(p1);
+    double coef = (double)power / getMass() / distance;
+    estimated.x = p.x+v.x+(int) ((p1.x - p.x) * coef);
+    estimated.y = p.y+v.y+(int) ((p1.y - p.y) * coef);
+    cerr << "Here estimated: " << estimated.x << " " << estimated.y << endl;
 }
 
-bool Sample::isValid() const {
-    return sample_id != -1;
-}
-
-// sort samples in descending order
-bool sortSamples(const Sample& sample1, const Sample& sample2) {
-    return sample1.getCostBenefitRatio() > sample2.getCostBenefitRatio();
+void Unit::move() {
+    p.x += v.x*1;
+    p.y += v.y*1;
 }
 
 
-class Robot {
-//    PlayerID_e owned_by;
-    string target;
-//    int eta;
+bool Unit::isMine() const {
+    return player == PLAYER_ME;
+}
+MoveResult* Unit::calculateThrust(Point start, Point v_previous, double machine_mass) const {
+    // For first, calculate target point (it's vector from our machine position to the target)
+    Point target{p.x - v_previous.x, p.y - v_previous.y};
+    // Then calculate power that needed to reach this point
+    double distance = start.distance(target);
+
+    int power = 0;
+    if (start.x == target.x) {
+        if(start.y != target.y) {
+            power = abs((int) (p.y-start.y-v_previous.y)*distance*machine_mass / (target.y-start.y));
+        }
+    } else {
+            power = abs((int) (p.x-start.x-v_previous.x)*distance*machine_mass / (target.x-start.x));
+    }
+    return new MoveResult{target, power};
+}
+
+Point Unit::calculateStopPosition(Point target, int power) const {
+    Point temp_v = v;
+    double distance = p.distance(target);
+    double coef = (double)power / mass / distance;
+    temp_v.x += (int) ((target.x - p.x) * coef);
+    temp_v.y += (int) ((target.y - p.y) * coef);
+    return {p.x+temp_v.x, p.y+temp_v.y};
+}
+
+/////////////////////////////
+////   BOTS
+/////////////////////////////
+class Wreck: public Unit {
+protected:
+    int radius;
+public:
+    bool is_blocked=false;
+    virtual int getRadius() { return radius; }
+    Wreck (int radius, int x, int y, int vx, int vy): Unit(x, y, vx, vy), radius{radius} {};
+
+    bool isOverlappedBy(vector<Unit> some_skills);
+};
+
+bool Wreck::isOverlappedBy(vector<Unit> some_skills) {
+    for (Unit skill : some_skills) {
+        if (p.distance(skill.p) < abs(getRadius()-skill.getRadius())+50)
+            return true;
+    }
+    return false;
+}
+
+class Tanker: public Unit {
+protected:
+    int radius;
+public:
+//    int end_x, end_y;
+    int water;
+    virtual int getRadius() { return radius; }
+    Tanker (int radius, int x, int y, int vx, int vy, int water): Unit(x, y, vx, vy), radius{radius}, water{water} {
+        p.x = x+vx;
+        p.y = y+vy;
+    };
+};
+
+/////////////////////////////
+////   REAPER
+/////////////////////////////
+class Reaper: public Unit {
+protected:
+    int radius=400;
+    float mass=0.5, friction=0.2;
+
+    bool checkObstacles(const Wreck& target_wreck, const vector<Tanker>& tankers);
+public:
+    Reaper (int x, int y, int vx, int vy): Unit(x, y, vx, vy) {};
+
+    virtual int getRadius() { return radius; }
+    double getMass() override { return mass; }
+    virtual double getFriction() { return friction; }
+
+    MoveResult *findNearestWreck(vector<Wreck> wrecks, const vector<Tanker>& tankers, Point destroyer_position);
+};
+
+bool Reaper::checkObstacles(const Wreck& target_wreck, const vector<Tanker>& tankers) {
+    if (target_wreck.is_blocked)
+        return true;
+    bool is_landed = false;
+    for (const Tanker& tanker : tankers) {
+        if (tanker.p.distance(target_wreck.p) < 500 && p.distance(tanker.p) < p.distance(target_wreck.p)+200)
+            is_landed = true;
+    }
+    return is_landed;
+}
+
+MoveResult * Reaper::findNearestWreck(vector<Wreck> wrecks, const vector<Tanker>& tankers, Point destroyer_position) {
+    if (wrecks.empty()) {
+        estimate(destroyer_position, 300);
+        target_mb = destroyer_position;
+        return new MoveResult{destroyer_position, 300};
+    }
+    MoveResult* best = wrecks[0].calculateThrust(p, v, mass);
+    MoveResult* temp;
+    for (Wreck& wreck : wrecks) {
+        temp = wreck.calculateThrust(p, v, mass);
+        if (checkObstacles(wreck, tankers)) {
+            cerr << "Shadowed wreck at " << wreck.p << endl;
+            continue;
+        }
+//        cerr << "Estimated power: " << temp->power << endl;
+        if (temp->power < best->power) {
+            best = temp;
+        }
+    }
+    if (best->power > 300) {
+        best->power = 300;
+    }
+    target_mb = best->p;
+    estimate(best->p, best->power);
+    return best;
+}
+
+struct CalculateBestTanker {
+    Tanker tanker;
+    MoveResult* to_result{};
+    int estimated_profit{};
+};
+
+/////////////////////////////
+////   DESTROYER
+/////////////////////////////
+class Destroyer: public Unit {
+protected:
+    int radius=400;
+    float mass=1.5, friction=0.3;
+
+    virtual int getRadius() { return radius; }
+    virtual double getMass() { return mass; }
+    virtual double getFriction() { return friction; }
+
+    static int calculateTankerProfit (Tanker tanker, Point reaper_position);
+    static bool ToSortCalculates (CalculateBestTanker calc1, CalculateBestTanker calc2);
+    static int calculateTankerProfit2 (Tanker tanker, Point reaper_position, int needed_power);
+public:
+    Destroyer (int x, int y, int vx, int vy): Unit(x, y, vx, vy) {};
+
+    MoveResult* findNearestTank(vector<Tanker> tankers, Point reaper_position);
+};
+
+int Destroyer::calculateTankerProfit(Tanker tanker, Point reaper_position) {
+    return (int)reaper_position.distance(tanker.p) - tanker.water*20;
+}
+
+int Destroyer::calculateTankerProfit2(Tanker tanker, Point reaper_position, int needed_power) {
+    return (int) (tanker.water/reaper_position.distance(tanker.p));
+//    return (int) (needed_power + reaper_position.distance(tanker.p) - tanker.water*40);
+}
+
+bool Destroyer::ToSortCalculates(CalculateBestTanker calc1, CalculateBestTanker calc2) {
+    return calc1.estimated_profit < calc2.estimated_profit;
+}
+
+MoveResult *Destroyer::findNearestTank(vector<Tanker> tankers, Point reaper_position) {
+    if (tankers.empty()) {
+        return new MoveResult{{0, 0}, 300};
+    }
+    MoveResult* best = tankers[0].calculateThrust(p, v, mass);
+    MoveResult* temp;
+    vector<CalculateBestTanker> accessible;
+    vector<CalculateBestTanker> all;
+    for (Tanker& tanker : tankers) {
+        if(tanker.p.len() > 6000) {
+            // Tanker is out of map
+            continue;
+        }
+        temp = tanker.calculateThrust(p, v, mass);
+//        cerr << "Destroyer power: " << temp->power << endl;
+        if (temp->power <= 300) {
+            accessible.push_back({tanker, temp, calculateTankerProfit(tanker, reaper_position)});
+        }
+        all.push_back({tanker, temp, calculateTankerProfit2(tanker, reaper_position, temp->power)});
+    }
+    if (all.empty()) {
+        return new MoveResult{{0, 0}, 300};
+    }
+    sort(all.begin(), all.end(), ToSortCalculates);
+    best = all[0].to_result;
+
+    if (best->power > 300) {
+        best->power = 300;
+    }
+    return best;
+}
+
+/////////////////////////////
+////   DOOFER
+/////////////////////////////
+class Doofer: public Unit {
+protected:
+    int radius=400;
+    float mass=1, friction=0.25;
+
+    static Wreck findClosestWreck(vector<Wreck> wrecks, Point target);
+public:
+    Doofer (int x, int y, int vx, int vy): Unit(x, y, vx, vy) {};
+
+    virtual int getRadius() { return 400; }
+    virtual double getMass() { return 1.0; }
+    virtual double getFriction() { return 0.25; }
+
+    MoveResult *findUncrowdedPath(vector<Unit> all_units, vector<Wreck> wrecks, Reaper *me, Reaper *target, int rage);
+};
+
+Wreck Doofer::findClosestWreck(vector<Wreck> wrecks, Point target) {
+    Wreck closest = wrecks[0];
+    double min = target.distance(wrecks[0].p);
+    for (const Wreck& wreck : wrecks) {
+        double tmp = target.distance(wreck.p);
+        if (tmp < min) {
+            min = tmp;
+            closest = wreck;
+        }
+    }
+    return closest;
+}
+MoveResult *Doofer::findUncrowdedPath(vector<Unit> all_units, vector<Wreck> wrecks, Reaper *me, Reaper *target, int rage) {
+    // If rage is enough, just follow target and push and oil it
+    if (rage > 150) {
+        if (p.distance(target->p) > 3000) {
+            return target->calculateThrust(p, v, getMass());
+        }
+        vector<Wreck> possible_targets;
+        for (Wreck wreck : wrecks) {
+            // Todo: me->target_mb doesnt represent actual "physical" target, instead it shows point near the target,
+            // vector in which direction my reaper move
+            if (target->v.isSharpAngle((wreck.p-target->p)) && target->p.distance(wreck.p) < wreck.getRadius()*2
+                && (me->target_mb != wreck.p || me->p.distance(wreck.p) > 2000) && p.distance(wreck.p) < 3000-wreck.getRadius())
+                possible_targets.push_back(wreck);
+        }
+        if (possible_targets.empty()) {
+            return new MoveResult{target->p+target->v, 300};
+        } else {
+            Wreck closest = findClosestWreck(possible_targets, target->p);
+            Point target_skill = closest.p;
+            double dist = p.distance(target_skill);
+            if (dist > 2000) {
+                double coef = target_skill.len()/2000;
+                target_skill = target_skill/coef;
+            }
+            cerr << "First doof-skill triggered" << endl;
+            cerr << "Target " << me->target_mb << endl;
+            return new MoveResult {target_skill, SpecialMoves::kSkill};
+        }
+    }
+    // Check for the skill ability
+    bool is_skill = true;
+    if (rage > 90 && p.distance(me->p) > 4000 && p.distance(target->p) < 2400) {
+        Point target_skill = target->p - p;
+        if (target_skill.len() < 2000) {
+            cerr << "Second doof-skill triggered" << endl;
+            return new MoveResult{p+target_skill, SpecialMoves::kSkill};
+        } else {
+            cerr << "Third doof-skill triggered" << endl;
+            double coef = target_skill.len()/2000;
+            return new MoveResult{p+(target_skill/coef), SpecialMoves::kSkill};
+        }
+    }
+    if (v.x == 0 && v.y == 0) {
+        return new MoveResult{{0,0}, 300};
+    }
+    vector<Unit> second_check;
+    for (Unit& unit : all_units) {
+        if (v.isSharpAngle(unit.v) || p.distance(unit.p) > 2000 || (unit.p.x == p.x && unit.p.y == p.y)) {
+            continue;
+        }
+        second_check.push_back(unit);
+    }
+    double gross_velocity = (300/mass / sqrt(v.x*v.x+v.y*v.y));
+    // If we continue to move in the same direction....
+    Point estimated_end = {p.x+v.x + (int)(gross_velocity*v.x), p.y+v.y + (int)(gross_velocity*v.y)};
+    Point check_circle = (p+estimated_end)/2;
+    double circle_len = p.distance(estimated_end)/2;
+    enum Povorot{kTo_center, kTo_border, kBack_center, kBack_border};
+    int in_circle = 0;
+    int reapers=0;
+    bool is_my_reaper=false;
+    for (Unit& unit : second_check) {
+        if (estimated_end.distance(unit.p) < 400+circle_len)
+            in_circle++;
+        if (unit.unit_type == Units::kReaper) {
+            reapers++;
+            if (unit.isMine())
+                is_my_reaper  = true;
+        }
+    }
+    if (in_circle > 2) {
+//        if (reapers>0 && !is_my_reaper && rage > 30) {
+//            return new MoveResult{check_circle, SpecialMoves::kSkill};
+//        } else {
+            return new MoveResult{{0, 0}, 300};
+//        }
+    } else {
+        return new MoveResult{estimated_end, 300};
+    }
+}
+
+class Player {
+public:
     int score;
-public:
-    Vitamin carried_vitamins;
-//    int expertise_e;
-//    int expertise_d;
-//    int expertise_c;
-//    int expertise_b;
-//    int expertise_a;
-    Sample *cur_sample = nullptr; //Sample();
-    Robot(string target, int score, const Vitamin& vitamin):
-            target{std::move(target)}, score{score}, carried_vitamins{vitamin} {}
-
-
-    void update(Robot* copy_robot);
-    string getTarget() { return target; }
-    void setTarget(string new_target){ target = std::move(new_target); };
-    string neededMolecules();
-    bool isCarriedSample() const;
+    int rage; // Unused
+    Reaper *reaper;
+    Destroyer *destroyer;
+    Doofer *doofer;
 };
 
-void Robot::update(Robot* copy_robot) {
-    target = copy_robot->getTarget();
-    score = copy_robot->score;
-    carried_vitamins = copy_robot->carried_vitamins;
-}
-
-string Robot::neededMolecules() {
-    return carried_vitamins.getNeeded(cur_sample->vitamin);
-}
-
-bool Robot::isCarriedSample() const {
-    return cur_sample != nullptr;
-}
-
-
+/////////////////////////////
+////   GAME
+/////////////////////////////
 class Game {
 private:
+    Player *me{};
+    Player *opponent1{};
+    Player *opponent2{};
+    Player *target{};
+    vector<Wreck> wrecks;
+    vector<Tanker> tankers;
+    vector<Unit> all_units;
+    vector<Unit> oils;
     bool is_init = true;
-    vector<Sample> useful_medicines;
-    vector<string> next_moves;
-    Robot *me, *enemy;
-
-    Robot* inputPlayer();
 public:
     void inputTurn();
-    string getCurrentTurn();
+    void answerTurn();
 };
 
-Robot* Game::inputPlayer() {
-    string target;
-    int eta;
-    int score;
-    int storage_a;
-    int storage_b;
-    int storage_c;
-    int storage_d;
-    int storage_e;
-    int expertise_a;
-    int expertise_b;
-    int expertise_c;
-    int expertise_d;
-    int expertise_e;
-    cin >> target >> eta >> score >> storage_a >> storage_b >> storage_c >> storage_d >> storage_e >> expertise_a >> expertise_b >> expertise_c >> expertise_d >> expertise_e; cin.ignore();
-    Vitamin vitamin {storage_a, storage_b, storage_c, storage_d, storage_e};
-    return new Robot{target, score, vitamin};
-}
-
 void Game::inputTurn() {
-    if (is_init) {
-        me = inputPlayer();
-    } else {
-        // Hollow input
-        me->update(inputPlayer());
-    }
-    enemy = inputPlayer();
-    useful_medicines.clear();
-    // Ignore
-    int available_a;
-    int available_b;
-    int available_c;
-    int available_d;
-    int available_e;
-    cin >> available_a >> available_b >> available_c >> available_d >> available_e; cin.ignore();
-    int sample_count;
-    cin >> sample_count; cin.ignore();
-    for (int i = 0; i < sample_count; i++) {
-        int sample_id;
-        int carried_by;
-        int rank;
-        string expertise_gain;
-        int health;
-        int cost_a;
-        int cost_b;
-        int cost_c;
-        int cost_d;
-        int cost_e;
-        cin >> sample_id >> carried_by >> rank >> expertise_gain >> health >> cost_a >> cost_b >> cost_c >> cost_d >> cost_e; cin.ignore();
-        Vitamin vitamin {cost_a, cost_b, cost_c, cost_d, cost_e};
-        Sample sample{sample_id, (PlayerID_e)carried_by, health,vitamin};
-        if (carried_by == PlayerID_e::kNone) {
-            useful_medicines.push_back(sample);
-        }
+    int my_score;
+    cin >> my_score; cin.ignore();
+    int enemy_score_1;
+    cin >> enemy_score_1; cin.ignore();
+    int enemy_score_2;
+    cin >> enemy_score_2; cin.ignore();
+    int my_rage;
+    cin >> my_rage; cin.ignore();
+    int enemy_rage_1;
+    cin >> enemy_rage_1; cin.ignore();
+    int enemy_rage_2;
+    cin >> enemy_rage_2; cin.ignore();
 
+    me = new Player;
+    me->score = my_score;
+    me->rage = my_rage;
+    opponent1 = new Player;
+    opponent1->score = enemy_score_1;
+    opponent2 = new Player;
+    opponent2->score = enemy_score_2;
+    target = opponent1;
+    if (enemy_score_2 > enemy_score_1)
+        target = opponent2;
+
+    wrecks.clear();
+    tankers.clear();
+    all_units.clear();
+    oils.clear();
+    int unit_count;
+    cin >> unit_count; cin.ignore();
+    for (int i = 0; i < unit_count; i++) {
+        int unit_id;
+        int unit_type;
+        int player;
+        float mass;
+        int radius;
+        int x;
+        int y;
+        int vx;
+        int vy;
+        int extra;
+        int extra_2;
+        cin >> unit_id >> unit_type >> player >> mass >> radius >> x >> y >> vx >> vy >> extra >> extra_2; cin.ignore();
+        all_units.emplace_back(x, y, vx, vy, mass, radius, unit_type, player);
+        if (unit_type == Units::kWreck) {
+            wrecks.emplace_back(radius, x, y, vx, vy);
+//            cerr << "Added wreck: " << x << " " << y << endl;
+        } else if (unit_type == Units::kTanker) {
+            tankers.emplace_back(radius, x, y, vx, vy, extra);
+//            Unit test_unit = Tanker{radius, x, y, vx, vy, extra};
+        } else if (unit_type == Units::kOil) {
+            oils.emplace_back(x, y, vx, vy, mass, radius, unit_type, player);
+        }
+        if (player == PLAYER_ME) {
+            // Hello Parker, it's me
+            if (unit_type == Units::kReaper) {
+                if (me->reaper != nullptr) {
+                }
+                if (!is_init) {
+                    cerr << "Real x, y " << x << " " << y << endl;
+                }
+                me->reaper = new Reaper{x, y, vx, vy};
+            } else if (unit_type == Units::kDestroyer) {
+                me->destroyer = new Destroyer{x, y, vx, vy};
+            } else if (unit_type == Units::kDoof) {
+                me->doofer = new Doofer{x, y, vx, vy};
+            }
+        } else if (player == 1) {
+            if (unit_type == Units::kReaper) {
+                opponent1->reaper = new Reaper{x, y, vx, vy};
+            } else if (unit_type == Units::kDestroyer) {
+                opponent1->destroyer = new Destroyer{x, y, vx, vy};
+            } else if (unit_type == Units::kDoof) {
+                opponent1->doofer = new Doofer{x, y, vx, vy};
+            }
+        } else if (player == 2) {
+            if (unit_type == Units::kReaper) {
+                opponent2->reaper = new Reaper{x, y, vx, vy};
+            } else if (unit_type == Units::kDestroyer) {
+                opponent2->destroyer = new Destroyer{x, y, vx, vy};
+            } else if (unit_type == Units::kDoof) {
+                opponent2->doofer = new Doofer{x, y, vx, vy};
+            }
+        }
     }
-    sort(useful_medicines.begin(), useful_medicines.end(), sortSamples);
+    for (Wreck& wreck : wrecks) {
+        if (wreck.isOverlappedBy(oils)) {
+            wreck.is_blocked = true;
+        }
+    }
     is_init = false;
 }
 
-string Game::getCurrentTurn() {
-    string result;
-    if (! next_moves.empty()) {
-        // Still got the moves
-        result = next_moves.front();
-        next_moves.erase(next_moves.begin());
-        return result;
-    }
-
-    if (! me->isCarriedSample()) {
-        if (me->getTarget() == "DIAGNOSIS") {
-            me->cur_sample =  new Sample{useful_medicines[0]};
-            return "CONNECT " + to_string(useful_medicines[0].sample_id);
-        } else {
-            me->setTarget("DIAGNOSIS");
-            return "GOTO DIAGNOSIS";
-        }
-    }
-    // So, we have a sample and need take needed molecules or send it to the laboratory
-    string needed_molecules = me->neededMolecules();
-    if (needed_molecules.empty()) {
-        next_moves.push_back("CONNECT " + to_string(me->cur_sample->sample_id));
-        me->cur_sample = nullptr;
-        return "GOTO LABORATORY";
-    }
-    if (me->getTarget() == "MOLECULES") {
-        return "CONNECT " + needed_molecules;
-    } else {
-        return "GOTO MOLECULES";
-    }
+void Game::answerTurn() {
+    cout << *(me->reaper->findNearestWreck(wrecks, tankers, me->destroyer->p)) << endl;
+    cout << *(me->destroyer->findNearestTank(tankers, me->reaper->p)) << endl;
+    cout << *(me->doofer->findUncrowdedPath(all_units, wrecks, me->reaper, target->reaper, me->rage)) << endl;
 }
-
 
 int main()
 {
-    // Ignore
-    int project_count;
-    cin >> project_count; cin.ignore();
-    for (int i = 0; i < project_count; i++) {
-        int a;
-        int b;
-        int c;
-        int d;
-        int e;
-        cin >> a >> b >> c >> d >> e; cin.ignore();
-    }
-
-    Game game;
+    Game game{};
     // game loop
     while (1) {
         game.inputTurn();
-
-        cout << game.getCurrentTurn() << endl;
+        cerr << "Begin answering...." << endl;
+        game.answerTurn();
     }
 }
