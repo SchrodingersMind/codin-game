@@ -8,3 +8,6 @@ add_executable(Algos main.cpp)
 
 project(CodeGames)
 add_executable(CodeGames cg.cpp)
+
+project(TheLabyrinth)
+add_executable(TheLabyrinth the-labyrinth/main.cpp)
