@@ -11,3 +11,6 @@ add_executable(CodeGames cg.cpp)
 
 project(TheLabyrinth)
 add_executable(TheLabyrinth the-labyrinth/main.cpp)
+
+project(JPS-Preprocessing)
+add_executable(JPS-Preprocessing jps-preprocessing/main.cpp jps-preprocessing/main.cpp jps-preprocessing/jps_element.cpp jps-preprocessing/jps_element.h jps-preprocessing/point.h)
