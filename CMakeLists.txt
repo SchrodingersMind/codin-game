@@ -14,3 +14,6 @@ add_executable(TheLabyrinth the-labyrinth/main.cpp)
 
 project(JPS-Preprocessing)
 add_executable(JPS-Preprocessing jps-preprocessing/main.cpp jps-preprocessing/main.cpp jps-preprocessing/jps_element.cpp jps-preprocessing/jps_element.h jps-preprocessing/point.h)
+
+project(JPS-Runtime)
+add_executable(JPS-Runtime jps-runtime/main.cpp jps-runtime/jps_element.h jps-runtime/jps_element.cpp jps-runtime/point.h)
