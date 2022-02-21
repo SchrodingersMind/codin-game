@@ -3,7 +3,7 @@ project(Algos)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(Algos main.cpp)
+#add_executable(Algos main.cpp)
 
 
 project(CodeGames)
